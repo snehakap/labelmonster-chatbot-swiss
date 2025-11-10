@@ -1,0 +1,25 @@
+{
+  "name": "chatbot",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Labelmonster AI Chatbot",
+  "main": "api/chat.js",
+  "scripts": {
+    "start": "node api/chat.js",
+    "dev": "nodemon api/chat.js"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^1.6.8",
+    "express": "^4.18.2",
+    "langdetect": "^0.2.1",
+    "natural": "^8.1.0",
+    "stopword": "^3.1.5",
+    "translate-google": "^1.5.0",
+    "openai": "^4.68.4"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  }
+}
