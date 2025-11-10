@@ -300,3 +300,5 @@ app.post("/api/chat", async (req, res) => {
     return res.json({ reply: "Fehler beim Abrufen der Antwort von Gemma." });
   }
 });
+
+export default app;
