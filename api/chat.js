@@ -4,7 +4,6 @@ import fs from "fs";
 import path from "path";
 import natural from "natural";
 import axios from "axios";
-import langdetect from "langdetect";
 import translate from "translate-google";
 import { fileURLToPath } from "url";
 import { OpenAI } from "openai";
@@ -24,8 +23,7 @@ const hfClient = new OpenAI({
 });
 
 // -------------------- Google Form Config --------------------
-const GOOGLE_FORM_URL =
-  "https://docs.google.com/forms/u/0/d/e/1FAIpQLSffbnGJGBC8awI_OgJF2HpLSvPOt6QgRrnBmPm6CwISGnAsoQ/formResponse";
+const GOOGLE_FORM_URL = "https://docs.google.com/forms/u/0/d/e/1FAIpQLSffbnGJGBC8awI_OgJF2HpLSvPOt6QgRrnBmPm6CwISGnAsoQ/formResponse";
 
 const GOOGLE_FORM_ENTRIES = {
   question: "entry.2072247045",
@@ -56,6 +54,14 @@ async function loadKnowledge() {
     knowledge = JSON.parse(data);
   }
   return knowledge;
+}
+
+// -------------------- Helpers --------------------
+function saveChat(userMsg, botReply) {
+  const log = { timestamp: new Date().toISOString(), user: userMsg, bot: botReply };
+  fs.appendFile("chatlogs.json", JSON.stringify(log) + "\n", (err) => {
+    if (err) console.error("❌ Error saving chat:", err);
+  });
 }
 
 function extractKeywords(text) {
@@ -145,11 +151,12 @@ function findRelevantKnowledge(question, expandedKeywords = null) {
 }
 
 // -------------------- Language Detection --------------------
-function detectLanguage(text) {
+async function detectLanguage(text) {
   try {
-    const detected = langdetect.detectOne(text);
-    const map = { de: "de", en: "en", fr: "fr", it: "it" };
-    return map[detected] || "de";
+    const detection = await translate(text, { to: "en" }); // auto-detects source
+    const detectedLang = detection.from?.language?.iso || "de";
+    console.log("🌐 Detected language:", detectedLang);
+    return detectedLang;
   } catch (err) {
     console.error("⚠️ Language detection failed:", err.message || err);
     return "de";
@@ -240,7 +247,8 @@ app.post("/api/chat", async (req, res) => {
   if (!message) return res.json({ reply: "Keine Nachricht erhalten." });
 
   try {
-    const userLang = detectLanguage(message);
+    const userLang = await detectLanguage(message);
+
     const questionInGerman = userLang === "de" ? message : await translateText(message, "de");
 
     await loadKnowledge();
@@ -292,5 +300,3 @@ app.post("/api/chat", async (req, res) => {
     return res.json({ reply: "Fehler beim Abrufen der Antwort von Gemma." });
   }
 });
-
-
