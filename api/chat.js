@@ -1,3 +1,4 @@
+
 // ======================= FULL SERVER CODE =======================
 
 import path from "path";
@@ -320,47 +321,6 @@ export default async function handler(req, res) {
 
   if (req.method === "OPTIONS") {
     return sendJSON(res, 200, {});
-  }
-
-  // -------------------- SERVE chatbot.html --------------------
-  if (req.method === "GET" && req.url === "/") {
-    const filePath = path.join(process.cwd(), "chatbot.html");
-    const html = await fs.readFile(filePath, "utf-8");
-    res.statusCode = 200;
-    res.setHeader("Content-Type", "text/html");
-    return res.end(html);
-  }
-
-  // -------------------- SERVE STATIC FILES --------------------
-  if (req.method === "GET" && req.url !== "/") {
-    try {
-      let filePath = path.join(process.cwd(), req.url.replace(/^\//, ""));
-
-      if (req.url.startsWith("/images/")) {
-        filePath = path.join(process.cwd(), "images", req.url.replace("/images/", ""));
-      }
-
-      const ext = path.extname(filePath).toLowerCase();
-      const mimeTypes = {
-        ".html": "text/html",
-        ".css": "text/css",
-        ".js": "application/javascript",
-        ".jpg": "image/jpeg",
-        ".jpeg": "image/jpeg",
-        ".png": "image/png",
-        ".gif": "image/gif",
-        ".svg": "image/svg+xml",
-      };
-
-      const file = await fs.readFile(filePath);
-      res.statusCode = 200;
-      res.setHeader("Content-Type", mimeTypes[ext] || "application/octet-stream");
-      return res.end(file);
-    } catch (err) {
-      console.log("STATIC FILE ERROR:", err.message);
-      res.statusCode = 404;
-      return res.end("Not found");
-    }
   }
 
   // -------------------- ONLY POST REACHES HERE --------------------
