@@ -3,13 +3,7 @@
   "version": "1.0.0",
   "description": "Labelmonster AI Chatbot",
   "type": "module",
-  "main": "api/chat.js",
-  "scripts": {
-    "start": "node api/chat.js",
-    "dev": "nodemon api/chat.js"
-  },
-  "author": "",
-  "license": "ISC",
+  "scripts": {},
   "dependencies": {
     "@vitalets/google-translate-api": "^9.2.1",
     "axios": "^1.13.2",
@@ -24,8 +18,5 @@
     "openai": "^6.8.1",
     "stopword": "^3.1.5",
     "translate-google": "^1.5.0"
-  },
-  "devDependencies": {
-    "nodemon": "^3.0.2"
   }
 }
