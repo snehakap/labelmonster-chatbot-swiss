@@ -1,20 +1,204 @@
-// -------------------- Required modules --------------------
-import express from "express";
-import fs from "fs";
+// ======================= FULL SERVER CODE =======================
+
 import path from "path";
-import natural from "natural";
+import { promises as fs } from "fs";
+import { OpenAI } from "openai";
 import axios from "axios";
 import translate from "translate-google";
-import { fileURLToPath } from "url";
-import { OpenAI } from "openai";
 
-// -------------------- Setup --------------------
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const app = express();
-app.use(express.json());
+// Words to ignore
+  global.stopwords = [
+  // Articles & determiners
+  "der","die","das","den","dem","des","ein","eine","einen","einem","einer",'etwas',
+  "dies","diese","dieser","dieses","jenes","jene","jener","solche","erzähl",
+  "manche","alle","jede","jeder","jedes","es","gibt","aus","brauche","meine","stellen",
+  // Pronouns
+  "ich","du","er","sie","es","wir","ihr","man",
+  "mich","dich","ihn","sie","uns","euch","ihnen","ihm","ihr","für","mein",
 
-const PORT = process.env.PORT || 3001;
+  // Question words
+  "wie","wo","was","wer","wen","wem","wessen","möglich","bieten", "Sie" ,"an",
+  "welche","welcher","welches","warum","wieso","weshalb","wohin","woher",
+
+  // Prepositions
+  "in","im","ins","am","an","auf","für","von","mit","ohne","über","unter",
+  "bei","durch","gegen","um","zu","zum","zur","nach","vor","hinter",
+  "neben","zwischen","entlang","außer","innerhalb","außerhalb",
+
+  // Auxiliary verbs
+  "bin","bist","ist","sind","seid","war","waren","wirst","wurde","wurden",
+  "habe","hast","hat","haben","habt","hatte","hatten",
+
+  // Modal verbs
+  "kann","kannst","können","könnt","könnte",
+  "muss","musst","müssen","müsst","müsste",
+  "soll","sollst","sollen","sollt","sollte","sollten",
+  "darf","darfst","dürfen","dürft","dürfte",
+  "will","willst","wollen","wollt","wollte","wollten",
+  "möchte","möchtest","möchten","möchtet",
+
+  // Common verbs that never represent the subject
+  "finden","prüfen","sehen","anzeigen","zeigen","bekommen","holen",
+  "machen","brauchen","suchen","geben","nehmen","gehen","kommen",
+  "erhalten","laden","vergleichen",
+  "nutzen","benutzen","verwenden","welchen",
+
+  // Generic chatbot words (never subjects)
+  "bitte","danke",
+
+  // Adverbs / filler words
+  "so","auch","nur","schon","noch","dann","danach","jetzt","heute",
+  "gestern","morgen","bald","gleich","hier","dort","da","mal","nun","basierend", "basiert", "empfehlen", "budget",
+
+  // Conjunctions
+  "und","oder","aber","doch","jedoch","denn","falls","wenn","weil",
+  "ob","beziehungsweise","bzw",
+
+  // Other non-subject particles
+  "ja","nein","okay","ok","mal","eben","halt","gern","mir","ihre"
+];
+
+function protectCPMWords(text) {
+  const safeWords = [
+    "CPM-200","CPM200","CPM 200","CPM-100","CPM100","CPM 100",
+    "cpm-200","cpm200","cpm 200","cpm-100","cpm100","cpm 100"
+  ];
+
+  safeWords.forEach((w, i) => {
+    const token = `__SAFE_CPM_${i}__`;
+    text = text.replace(new RegExp(w, "gi"), token);
+  });
+
+  return { text, safeWords };
+}
+
+function restoreCPMWords(text, safeWords) {
+  safeWords.forEach((w, i) => {
+    const token = `__SAFE_CPM_${i}__`;
+    text = text.replace(new RegExp(token, "g"), w);
+  });
+  return text;
+}
+
+// -------------------- Load knowledge.json --------------------
+let knowledge = [];
+const knowledgePath = path.join(process.cwd(), "knowledge.json");
+
+async function loadKnowledge() {
+  if (!knowledge.length) {
+    const data = await fs.readFile(knowledgePath, "utf-8");
+    knowledge = JSON.parse(data);
+  }
+  return knowledge;
+}
+
+
+// -------------------- Utility Functions --------------------
+function extractKeywords(text) {
+
+    // 1. Lowercase + keep umlauts + remove punctuation
+    const rawWords = text
+        .toLowerCase()
+        .replace(/[^a-zA-ZäöüÄÖÜß]/g, " ")
+        .split(/\s+/)
+        .filter(Boolean);
+
+
+    // 2. Remove fragments shorter than 3 letters
+    let minLenWords = rawWords.filter(w => w.length >= 3);
+
+    // 3. Remove greetings inside long sentences
+    const greetingWords = ["hallo", "hi", "hello", "guten", "tag", "morgen"];
+    if (minLenWords.length > 1 && greetingWords.includes(minLenWords[0])) {
+        minLenWords.shift();
+    }
+
+    // 4. Apply global stopwords
+    let keywords = minLenWords.filter(w => !global.stopwords.includes(w));
+
+    // 5. Ignore certain words ONLY IF keyword count > 1
+    const ignoreIfMultiple = [
+        "etiketten", "drucker", "gerät", "geräte",
+        "artikel", "etikett", "drucksysteme",
+        "cpm", "druckt", "software"
+    ];
+
+    if (keywords.length > 1) {
+        keywords = keywords.filter(w => !ignoreIfMultiple.includes(w));
+    }
+
+    return keywords;
+}
+
+async function findRelevantKnowledge(question) {
+  const knowledgeData = await loadKnowledge();
+
+  const keywords = extractKeywords(question)
+  .map(k => k.toLowerCase())
+  .filter(k => !global.stopwords.includes(k));
+  if (keywords.length === 0) {
+    return { bestMatch: null, bestScore: 0 };
+  }
+
+  let bestMatch = null;
+  let bestScore = 0;
+
+  for (const entry of knowledgeData) {
+    if (!entry.patterns) continue;
+
+    let entryScore = 0;   // total keyword matches across all patterns in this ID
+
+    for (const pattern of entry.patterns) {
+      const p = pattern.toLowerCase();
+
+      keywords.forEach(kw => {
+        const occurrences = p.split(kw).length - 1; // count matches
+        if (occurrences > 0) entryScore += occurrences;
+      });
+    }
+
+    // Choose the ID with the HIGHEST total score
+    if (entryScore > bestScore) {
+      bestScore = entryScore;
+      bestMatch = entry;
+    }
+  }
+
+  if (bestScore === 0) return { bestMatch: null, bestScore: 0 };
+
+  return { bestMatch, bestScore };
+}
+
+function extractSentenceSubject(sentence) {
+    // Normalize
+    let cleaned = sentence
+        .toLowerCase()
+        .replace(/[^a-zA-Z0-9äöüÄÖÜß]/g, " ")
+        .trim();
+
+    const words = cleaned.split(/\s+/).filter(Boolean);
+
+    // 1️⃣ Remove stopwords
+    let meaningful = words.filter(w => !global.stopwords.includes(w));
+
+    // 2️⃣ Remove very short fragments (<3 or <4 as needed)
+    meaningful = meaningful.filter(w => w.length >= 3);
+
+    // 3️⃣ NEW — Remove generic industry terms ONLY IF more than 1 keyword
+    const ignoreIfMultiple = [
+        "etiketten", "drucker", "gerät", "geräte",
+        "artikel", "etikett", "drucksysteme",
+        "cpm", "druckt", "software"
+    ];
+
+    if (meaningful.length > 1) {
+        meaningful = meaningful.filter(w => !ignoreIfMultiple.includes(w));
+    }
+
+    // 4️⃣ Return first meaningful → This is your subject
+    const subject = meaningful[0] || "";
+    return subject;
+}
 
 // -------------------- Hugging Face Client --------------------
 const hfClient = new OpenAI({
@@ -23,7 +207,8 @@ const hfClient = new OpenAI({
 });
 
 // -------------------- Google Form Config --------------------
-const GOOGLE_FORM_URL = "https://docs.google.com/forms/u/0/d/e/1FAIpQLSffbnGJGBC8awI_OgJF2HpLSvPOt6QgRrnBmPm6CwISGnAsoQ/formResponse";
+const GOOGLE_FORM_URL =
+  "https://docs.google.com/forms/u/0/d/e/1FAIpQLSffbnGJGBC8awI_OgJF2HpLSvPOt6QgRrnBmPm6CwISGnAsoQ/formResponse";
 
 const GOOGLE_FORM_ENTRIES = {
   question: "entry.2072247045",
@@ -31,274 +216,260 @@ const GOOGLE_FORM_ENTRIES = {
   timestamp: "entry.1378060286",
 };
 
-// -------------------- Google Form Logging Helper --------------------
-async function logToGoogleForm(question, answer) {
-  try {
-    const formData = new URLSearchParams();
-    formData.append(GOOGLE_FORM_ENTRIES.question, question);
-    formData.append(GOOGLE_FORM_ENTRIES.answer, answer);
-    formData.append(GOOGLE_FORM_ENTRIES.timestamp, new Date().toISOString());
-    await axios.post(GOOGLE_FORM_URL, formData);
-  } catch (err) {
-    console.error("⚠️ Failed to log to Google Form:", err.message);
-  }
-}
-
-// -------------------- Load knowledge base --------------------
-let knowledge = [];
-const knowledgePath = path.join(__dirname, "../knowledge.json");
-
-async function loadKnowledge() {
-  if (!knowledge.length) {
-    const data = await fs.promises.readFile(knowledgePath, "utf-8");
-    knowledge = JSON.parse(data);
-  }
-  return knowledge;
-}
-
-// -------------------- Helpers --------------------
-function saveChat(userMsg, botReply) {
-  const log = { timestamp: new Date().toISOString(), user: userMsg, bot: botReply };
-  fs.appendFile("chatlogs.json", JSON.stringify(log) + "\n", (err) => {
-    if (err) console.error("❌ Error saving chat:", err);
-  });
-}
-
-function extractKeywords(text) {
-  const tokenizer = new natural.WordTokenizer();
-  return tokenizer.tokenize(text.toLowerCase());
-}
-
-// -------------------- AI-generated related terms --------------------
-async function generateRelatedTerms(contextText, maxTerms = 15) {
-  try {
-    const prompt = `
-You are a strict utility that returns related words/short phrases useful for keyword matching.
-Given the TEXT between triple backticks, produce a JSON array (only the array, nothing else) of up to ${maxTerms} single-word or short-phrase related terms, synonyms, and closely related concepts that would help match this text to knowledge-base questions.
-Respond ONLY with a JSON array of strings. Do NOT add explanation, commentary, or any extra text.
-
-TEXT:
-\`\`\`
-${contextText}
-\`\`\`
-`;
-    const resp = await hfClient.chat.completions.create({
-      model: "google/gemma-2-2b-it:nebius",
-      messages: [{ role: "user", content: prompt }],
-      max_tokens: 200,
-    });
-
-    const raw = resp.choices?.[0]?.message?.content?.trim() || "";
-    let parsed = null;
-    try {
-      parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed)) parsed = null;
-    } catch {
-      const match = raw.match(/\[.*\]/s);
-      if (match) {
-        try {
-          parsed = JSON.parse(match[0]);
-        } catch {
-          parsed = null;
-        }
-      }
-    }
-
-    if (!parsed) {
-      const lines = raw
-        .split(/\r?\n/)
-        .map((l) => l.trim().replace(/^[\-\*\d\.\)\s]+/, ""))
-        .filter(Boolean)
-        .slice(0, maxTerms);
-      parsed = lines;
-    }
-
-    return Array.from(new Set(parsed.map((p) => String(p).toLowerCase().trim()))).slice(0, maxTerms);
-  } catch (err) {
-    console.error("⚠️ generateRelatedTerms failed:", err.message || err);
-    return [];
-  }
-}
-
-// -------------------- KB Matching --------------------
-function findRelevantKnowledge(question, expandedKeywords = null) {
-  const baseKeywords = extractKeywords(question);
-  const keywordsSet = new Set(baseKeywords);
-
-  if (expandedKeywords && Array.isArray(expandedKeywords)) {
-    expandedKeywords.forEach((k) => {
-      if (k && typeof k === "string") keywordsSet.add(k.toLowerCase());
-    });
-  }
-
-  let bestMatch = null;
-  let bestScore = 0;
-
-  for (const entry of knowledge) {
-    if (!entry.patterns) continue;
-    for (const pattern of entry.patterns) {
-      for (const keyword of keywordsSet) {
-        const similarity = natural.JaroWinklerDistance(keyword, pattern.toLowerCase());
-        if (similarity > bestScore) {
-          bestScore = similarity;
-          bestMatch = entry;
-        }
-      }
-    }
-  }
-
-  return bestScore > 0.8 ? { entry: bestMatch, score: bestScore } : null;
-}
-
-// -------------------- Language Detection --------------------
-async function detectLanguage(text) {
-  try {
-    const detection = await translate(text, { to: "en" }); // auto-detects source
-    const detectedLang = detection.from?.language?.iso || "de";
-    console.log("🌐 Detected language:", detectedLang);
-    return detectedLang;
-  } catch (err) {
-    console.error("⚠️ Language detection failed:", err.message || err);
-    return "de";
-  }
-}
-
-// -------------------- Segment Protection --------------------
-const FIXED_PROTECTED = [
-  "Spielhof 9, 6317 Oberwil bei Zug, Switzerland",
-  "info@labelmonster.swiss",
-  "support@labelmonster.eu",
-];
-
+// -------------------- Segment Protection Helpers --------------------
 function protectSegments(text) {
+  // Match:
+  // 1. HTML tags
+  // 2. URLs
+  // 3. Emails
+  // 4. Physical addresses
+  const regex = /<[^>]+>|https?:\/\/\S+|\b[\w.-]+@[\w.-]+\.\w{2,}\b|\b[A-ZÄÖÜ][a-zäöüß]+\s\d{1,3},\s\d{4,5}\s[A-ZÄÖÜa-zäöüß\s]+,?\s?[A-ZÄÖÜa-zäöüß]*\b/g;
+
   const mapping = {};
-  let out = text;
-  let idx = 0;
+  let i = 0;
 
-  for (const seg of FIXED_PROTECTED) {
-    const re = new RegExp(seg.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
-    out = out.replace(re, () => {
-      const token = `__PROT_${idx}__`;
-      mapping[token] = seg;
-      idx += 1;
-      return token;
-    });
-  }
-
-  const emailRegex = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
-  out = out.replace(emailRegex, (m) => {
-    if (Object.values(mapping).includes(m)) return m;
-    const token = `__PROT_${idx}__`;
-    mapping[token] = m;
-    idx += 1;
-    return token;
+  const protectedText = text.replace(regex, (match) => {
+    const key = `__SEG_${i}__`;
+    mapping[key] = match;
+    i++;
+    return key;
   });
 
-  const phoneRegex = /(\+?\d[\d ()-]{6,}\d)/g;
-  out = out.replace(phoneRegex, (m) => {
-    if (Object.values(mapping).includes(m)) return m;
-    const token = `__PROT_${idx}__`;
-    mapping[token] = m;
-    idx += 1;
-    return token;
-  });
-
-  return { protectedText: out, mapping };
+  return { protectedText, mapping };
 }
 
 function restoreSegments(text, mapping) {
-  let out = text;
-  for (const token in mapping) {
-    const seg = mapping[token];
-    const re = new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g");
-    out = out.replace(re, seg);
+  let restored = text;
+  for (const key in mapping) {
+    restored = restored.replace(key, mapping[key]);
   }
-  return out;
+  return restored;
 }
 
-// -------------------- Translation --------------------
+// -------------------- TRANSLATION --------------------
 async function translateText(text, targetLangCode) {
   if (!text) return text;
+
   try {
+    // Words that must NOT be translated
+    const safeWords = [
+      "CPM-200","CPM200","CPM 200","CPM-100","CPM100","CPM 100",
+      "cpm-200","cpm200","cpm 200","cpm-100","cpm100","cpm 100"
+    ];
+
+    // Protect CPM words
+    safeWords.forEach((w, i) => {
+      const token = `__SAFE_CPM_${i}__`;
+      text = text.replace(new RegExp(w, "g"), token);
+    });
+
+    // Protect HTML links & tags
     const { protectedText, mapping } = protectSegments(text);
-    const res = await translate(protectedText, { to: targetLangCode });
-    const translated = typeof res === "string" ? res : res.text || protectedText;
-    const restored = restoreSegments(translated, mapping);
-    return restored;
+
+    // Translate
+    let translated = await translate(protectedText, { to: targetLangCode });
+    translated = typeof translated === "string" ? translated : translated.text;
+
+    // Restore HTML segments
+    translated = restoreSegments(translated, mapping);
+
+    // Restore CPM tokens
+    safeWords.forEach((w, i) => {
+      const token = `__SAFE_CPM_${i}__`;
+      translated = translated.replace(new RegExp(token, "g"), w);
+    });
+    
+    return translated;
+
   } catch (err) {
-    console.error("❌ Translation error:", err.message || err);
+    console.error("❌ Translation error:", err.message);
     return text;
   }
 }
 
-// -------------------- Clean Model Output --------------------
-function cleanModelOutput(raw) {
-  if (!raw) return "";
-  let out = raw;
-  out = out.replace(/^["']+|["']+$/g, "").trim();
-  out = out.replace(/\*\*/g, "").replace(/(^|\n)[ \t]*[-*+] /g, "$1");
-  out = out.replace(/\r/g, "").replace(/\n{3,}/g, "\n\n").trim();
-  return out;
+// -------------------- Log to Google Form --------------------
+async function logToGoogleForm(question, answer) {
+  try {
+    const payload = new URLSearchParams();
+    payload.append(GOOGLE_FORM_ENTRIES.question, question);
+    payload.append(GOOGLE_FORM_ENTRIES.answer, answer);
+
+    await axios.post(GOOGLE_FORM_URL, payload.toString(), {
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    });
+
+  } catch (err) {
+    console.error("⚠️ Error sending to Google Form:", err.message);
+  }
 }
 
-// -------------------- Chat Endpoint --------------------
-app.post("/api/chat", async (req, res) => {
-  const { message } = req.body;
-  if (!message) return res.json({ reply: "Keine Nachricht erhalten." });
+// -------------------- HELPER FOR VERCEL RESPONSE --------------------
+function sendJSON(res, status, obj) {
+  res.statusCode = status;
+  res.setHeader("Content-Type", "application/json");
+  res.end(JSON.stringify(obj));
+}
 
-  try {
-    const userLang = await detectLanguage(message);
+// -------------------- EXPORT DEFAULT (REQUIRED BY VERCEL) --------------------
+export default async function handler(req, res) {
 
-    const questionInGerman = userLang === "de" ? message : await translateText(message, "de");
+  // -------------------- CORS --------------------
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-    await loadKnowledge();
+  if (req.method === "OPTIONS") {
+    return sendJSON(res, 200, {});
+  }
 
-    const relatedTerms = await generateRelatedTerms(questionInGerman);
-    const matchResult = findRelevantKnowledge(questionInGerman, relatedTerms);
+  // -------------------- SERVE chatbot.html --------------------
+  if (req.method === "GET" && req.url === "/") {
+    const filePath = path.join(process.cwd(), "chatbot.html");
+    const html = await fs.readFile(filePath, "utf-8");
+    res.statusCode = 200;
+    res.setHeader("Content-Type", "text/html");
+    return res.end(html);
+  }
 
-    if (!matchResult) {
-      const fallbackGerman =
-        "Entschuldigung, das habe ich nicht verstanden. Bitte stellen Sie eine klare Frage oder senden Sie uns eine E-Mail an <no-translate>info@labelmonster.swiss</no-translate>, damit wir Ihnen besser weiterhelfen können.";
-      const fallback = await translateText(fallbackGerman, userLang);
-      saveChat(message, fallback);
-      await logToGoogleForm(message, fallback);
-      return res.json({ reply: fallback });
+  // -------------------- SERVE STATIC FILES --------------------
+  if (req.method === "GET" && req.url !== "/") {
+    try {
+      let filePath = path.join(process.cwd(), req.url.replace(/^\//, ""));
+
+      if (req.url.startsWith("/images/")) {
+        filePath = path.join(process.cwd(), "images", req.url.replace("/images/", ""));
+      }
+
+      const ext = path.extname(filePath).toLowerCase();
+      const mimeTypes = {
+        ".html": "text/html",
+        ".css": "text/css",
+        ".js": "application/javascript",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".png": "image/png",
+        ".gif": "image/gif",
+        ".svg": "image/svg+xml",
+      };
+
+      const file = await fs.readFile(filePath);
+      res.statusCode = 200;
+      res.setHeader("Content-Type", mimeTypes[ext] || "application/octet-stream");
+      return res.end(file);
+    } catch (err) {
+      console.log("STATIC FILE ERROR:", err.message);
+      res.statusCode = 404;
+      return res.end("Not found");
     }
+  }
 
-    const matchedEntry = matchResult.entry;
-    let kbAnswerGerman = cleanModelOutput(matchedEntry.answer || "");
-    if (!kbAnswerGerman) {
-      const fallbackGerman =
-        "Entschuldigung, das habe ich nicht verstanden. Bitte stellen Sie eine klare Frage oder senden Sie uns eine E-Mail an <no-translate>info@labelmonster.swiss</no-translate>, damit wir Ihnen besser weiterhelfen können.";
-      const fallback = await translateText(fallbackGerman, userLang);
-      saveChat(message, fallback);
-      await logToGoogleForm(message, fallback);
-      return res.json({ reply: fallback });
-    }
+  // -------------------- ONLY POST REACHES HERE --------------------
+  if (req.method !== "POST") {
+    return sendJSON(res, 405, { error: "Method not allowed" });
+  }
 
-    let finalReply = kbAnswerGerman;
-    if (userLang !== "de") {
-      try {
-        finalReply = await translateText(kbAnswerGerman, userLang);
-      } catch (err) {
-        console.error("⚠️ Translation of KB answer failed:", err.message || err);
-        finalReply = kbAnswerGerman;
+  // Parse POST body (Vercel gives buffer)
+  const body = req.body || JSON.parse(await new Promise(resolve => {
+    let data = "";
+    req.on("data", chunk => (data += chunk));
+    req.on("end", () => resolve(data));
+  }));
+
+  const message = body.message || "";
+  const lang = body.language || "de";
+
+  // -------------------- CPM Protection --------------------
+  const { text: protectedMsg, safeWords } = protectCPMWords(message);
+
+  const germanMessage = await translateText(protectedMsg, "de");
+
+  // -------------------- EXACT MATCH LOGIC (unchanged) --------------------
+
+  await loadKnowledge();
+
+  let exactKBMatch = null;
+  const cleanedGerman = germanMessage.trim().toLowerCase();
+
+  for (const entry of knowledge) {
+    if (!entry.patterns) continue;
+
+    for (const pattern of entry.patterns) {
+      const cleanedPattern = pattern.trim().toLowerCase();
+
+      if (cleanedGerman === cleanedPattern) {
+        exactKBMatch = entry;
+        break;
+      }
+
+      const gWords = cleanedGerman.split(" ").length;
+      const pWords = cleanedPattern.split(" ").length;
+
+      if (gWords === pWords && cleanedGerman.includes(cleanedPattern)) {
+        exactKBMatch = entry;
+        break;
       }
     }
 
-    finalReply = finalReply
-      .replace(/__PROT_ADDR__/g, "Spielhof 9, 6317 Oberwil bei Zug, Switzerland")
-      .replace(/__PROT_EMAIL__/g, "info@labelmonster.swiss")
-      .replace(/\s{2,}/g, " ")
-      .trim();
-
-    saveChat(message, finalReply);
-    await logToGoogleForm(message, finalReply);
-    return res.json({ reply: finalReply });
-  } catch (err) {
-    console.error("❌ Chat error:", err.message || err);
-    return res.json({ reply: "Fehler beim Abrufen der Antwort von Gemma." });
+    if (exactKBMatch) break;
   }
-});
 
-export default app;
+  if (exactKBMatch) {
+
+    let replyGerman = exactKBMatch.answer;
+
+    const { text: protectedReply, safeWords: replySafeWords } = protectCPMWords(replyGerman);
+    let finalReply =
+      lang === "de" ? replyGerman : await translateText(protectedReply, lang);
+
+    finalReply = restoreCPMWords(finalReply, replySafeWords);
+
+    await logToGoogleForm(message, finalReply);
+    return sendJSON(res, 200, { reply: finalReply });
+  }
+
+  // -------------------- SUBJECT MATCH (unchanged) --------------------
+
+  const extractedSubject = extractSentenceSubject(germanMessage);
+
+  if (extractedSubject) {
+    const kbData = await loadKnowledge();
+
+    const subjectMatch = kbData.find(entry =>
+      entry.subject &&
+      entry.subject.some(s => s.toLowerCase() === extractedSubject.toLowerCase())
+    );
+
+    if (subjectMatch) {
+      const replyGerman = subjectMatch.answer;
+      let finalReply = lang === "de" ? replyGerman : await translateText(replyGerman, lang);
+      finalReply = restoreCPMWords(finalReply, safeWords);
+      await logToGoogleForm(message, finalReply);
+      return sendJSON(res, 200, { reply: finalReply });
+    }
+  }
+
+  // -------------------- SIMILARITY 80% (unchanged) --------------------
+
+  let { bestMatch, bestScore } = await findRelevantKnowledge(germanMessage);
+
+  if (bestMatch && bestScore >= 0.8) {
+    const replyGerman = bestMatch.answer;
+    let finalReply = lang === "de" ? replyGerman : await translateText(replyGerman, lang);
+    finalReply = restoreCPMWords(finalReply, safeWords);
+    await logToGoogleForm(message, finalReply);
+    return sendJSON(res, 200, { reply: finalReply });
+  }
+
+
+  // -------------------- FALLBACK (unchanged) --------------------
+  const fallbackGerman =
+    "Entschuldigung, das habe ich nicht verstanden. Bitte stellen Sie eine klare Frage oder senden Sie uns eine E-Mail an <a href='mailto:info@labelmonster.swiss'>info@labelmonster.swiss</a>.";
+
+  const translatedFallback =
+    lang === "de" ? fallbackGerman : await translateText(fallbackGerman, lang);
+
+  const finalReply = restoreCPMWords(translatedFallback, safeWords);
+
+  await logToGoogleForm(message, finalReply);
+  return sendJSON(res, 200, { reply: finalReply });
+}
