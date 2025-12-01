@@ -4,7 +4,7 @@
     "subject":[],
     "patterns": [
       "hallo", "hi", "hello", "guten tag", "hey","salut", "bonjour", "bonsoir", "bonne nuit", "coucou", "hé", "allo", "bienvenue", "ça va", "tout va bien", "salutations", "enchanté", "bonjour à tous", "bonne journée", "bon après-midi", "bon week-end", "à bientôt", "à plus", "à plus tard", "à demain", "au revoir", "yo", "wesh",
-      "good morning", "good afternoon", "good evening",
+      "good morning", "good afternoon", "good evening","wie geht's","hallo wie geht's","wie gehts",
       "servus", "moin", "greetings","guten morgen","guten abend","ciao", "salve", "ehi", "buongiorno", "buon pomeriggio", "buonasera", "buonanotte", "benvenuto", "benvenuta", "come va", "tutto bene", "saluti", "piacere", "bella", "uè", "ciao bello", "ciao bella", "hey", "buona giornata", "buon weekend", "arrivederci", "a presto", "a dopo", "a domani"
     ],
     "answer": "Hallo 👋, wie kann ich Ihnen helfen?"
@@ -669,7 +669,7 @@
     "How much does delivery cost?", "What is the shipping cost?", "Are there shipping charges?", "Ist die Lieferung kostenlos oder fallen Versandkosten an?",
     "Do you charge for delivery?", "Is shipping free?", "How much is the delivery fee?", "what is the delivery cost","Wie hoch sind die Lieferkosten?", "Wie hoch sind die Versandkosten?", "Was kostet die Lieferung?", "Was kostet der Versand?", "Wie viel kostet der Versand?", "Wie viel kostet die Lieferung?", "Gibt es Versandkosten?", "Gibt es Lieferkosten?", "Ist der Versand kostenlos?", "Ist die Lieferung kostenlos?", "Ist der Versand gratis?", "Ist die Lieferung gratis?", "Fallen zusätzliche Versandkosten an?", "Fallen Lieferkosten an?", "Muss ich Versandkosten bezahlen?", "Muss ich für die Lieferung bezahlen?", "Wie berechnen sich die Versandkosten?", "Wie werden die Lieferkosten berechnet?", "Wie viel kostet der Versand nach Switzerland?", "Wie viel kostet der Versand ins Ausland?", "Wie viel kostet der Versand nach Österreich?", "Wie viel kostet der Versand innerhalb Switzerland?", "Wie hoch sind die Versandkosten für meine Bestellung?", "Wie hoch sind die Versandkosten bei euch?", "Wie viel verlangt ihr für den Versand?", "Wie viel verlangt das Unternehmen für die Lieferung?", "Gibt es einen Mindestbestellwert für kostenlosen Versand?", "Ab welchem Betrag ist der Versand kostenlos?", "Sind die Versandkosten im Preis enthalten?", "Sind die Lieferkosten im Preis enthalten?", "Wie teuer ist der Versand?", "Wie teuer ist die Lieferung?", "Wie hoch sind die Versandgebühren?", "Gibt es Versandgebühren?", "Wie kann ich die Versandkosten einsehen?", "Wo finde ich Informationen zu den Versandkosten?", "Können Sie mir bitte die Versandkosten nennen?", "Können Sie mir sagen, wie viel der Versand kostet?", "Was kostet der Versand ungefähr?", "Wie viel kostet der Versand bei Standardlieferung?", "Wie viel kostet der Expressversand?", "Wie hoch sind die Kosten für den Expressversand?"
     ],
-    "answer": "Wir liefern in die ganze Schweiz. Die Versandkosten richten sich nach dem Bestellwert:- <br> unter 100€ Warenwert = 25€ Versandkosten <br> ab 100 € Warenwert = 13,50€ Versandkosten"
+    "answer": "Wir liefern ausschließlich innerhalb der Schweiz und nach Liechtenstein. Die Versandkosten betragen 17,50 CHF."
   },
   {
     "id": "delivery_time",
@@ -992,7 +992,7 @@
 "Combien de temps dure la livraison en moyenne ?",
 "Combien de temps environ avant que la livraison arrive ?"
     ],
-    "answer": "Die Lieferzeit beträgt in der Regel 2–3 Werktage oder wie in der Auftragsbestätigung angegeben. Für weitere Informationen senden Sie uns bitte eine E-Mail an <a href='mailto:info@labelmonster.swiss'>info@labelmonster.swiss</a>."
+    "answer": "Wir liefern ausschließlich innerhalb der Schweiz und nach Liechtenstein. Die Lieferzeit beträgt in der Regel 2–3 Werktage oder entspricht den Angaben in der Auftragsbestätigung. Für weitere Informationen senden Sie uns bitte eine E-Mail an <a href='mailto:info@labelmonster.swiss'>info@labelmonster.swiss</a>."
   },
   {
   "id": "orders",
@@ -1859,7 +1859,7 @@
       "Excel integration", "use database", "datenbankverbindung",
       "connect to excel", "use MS Access", "sql connection","Kann ich die Daten aus einer Excel-Tabelle verwenden?",
 "Kann ich Daten aus einer anderen Datenbank nutzen?","Can I also use the information in the software via an Excel spreadsheet or another database?",
-"Can I use data from an Excel file in the software?",
+"Can I use data from an Excel file in the software?","Kann ich die Informationen in der Software auch über eine Excel-Tabelle oder eine andere Datenbank nutzen?",
 "Can I connect Excel to the software?",
 "Can I use information from another database?",
 "Can I import data from Excel?",
@@ -3690,7 +3690,7 @@
 "Gibt es eine Broschüre für das CPM-100?",
 "Gibt es eine Broschüre für das CPM-200?",
 "Kann ich die Broschüre per E-Mail erhalten?",
-"Wie bekomme ich die aktuelle Broschüre?",
+"Wie bekomme ich die aktuelle Broschüre?","Was ist der Labelmonster-Schilderkatalog?",
 "Gibt es eine Broschüre auf Deutsch?",
 "Gibt es eine Broschüre auf Englisch?",
 "Wo finde ich Broschüren zu Zubehör und Verbrauchsmaterial?",
@@ -6228,7 +6228,7 @@
   },
   {
     "id": "product_overview",
-    "subject":["Labeldrucker", "Druck- und Schneidesysteme", "Drucker", "Waren", "Artikel", "Materialien", "Produktübersicht", "Produkte", "Unsere Produkte"],
+    "subject":["Labeldrucker", "Druck- und Schneidesysteme","spezifikationen", "Drucker", "Waren", "Artikel", "Materialien", "Produktübersicht", "Produkte", "Unsere Produkte"],
     "patterns": [
       "produkte",
       "unsere produkte",
@@ -6248,7 +6248,7 @@
       "Lighthouse","Welche Produkte bietet ihr an?",
       "product overview","Welche Produkte bietet labelmonster an?",
       "catalogue","Labeldrucker", "Druck- und Schneidesysteme", "Drucker", "Waren", "Artikel", "Materialien", "Produktübersicht", "Produkte", "Unsere Produkte",
-      "show me your products",
+      "show me your products","erzählen sie mir mehr zu den spezifikationen",
       "products", "our products", "catalog", "catalogue", "label printer", "printing and cutting systems", 
 "consumables", "printer", "Brady", "Epson", "Primera", "MAX", "goods", "items", "articles", 
 "materials", "Lighthouse", "product overview", "produits", "nos produits", "catalogue", "imprimante d’étiquettes", "systèmes d’impression et de découpe",
