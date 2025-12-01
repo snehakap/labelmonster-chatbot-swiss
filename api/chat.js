@@ -11,11 +11,11 @@ import translate from "translate-google";
   global.stopwords = [
   // Articles & determiners
   "der","die","das","den","dem","des","ein","eine","einen","einem","einer",'etwas',
-  "dies","diese","dieser","dieses","jenes","jene","jener","solche","erzähl",
-  "manche","alle","jede","jeder","jedes","es","gibt","aus","brauche","meine","stellen",
+  "dies","diese","dieser","dieses","jenes","jene","jener","solche","erzähl","geht",
+  "manche","alle","jede","jeder","jedes","es","gibt","aus","brauche","meine","stellen","erzählen",
   // Pronouns
   "ich","du","er","sie","es","wir","ihr","man",
-  "mich","dich","ihn","sie","uns","euch","ihnen","ihm","ihr","für","mein",
+  "mich","dich","ihn","sie","uns","euch","ihnen","ihm","ihr","für","mein","mehr",
 
   // Question words
   "wie","wo","was","wer","wen","wem","wessen","möglich","bieten", "Sie" ,"an",
@@ -121,7 +121,7 @@ function extractKeywords(text) {
     const ignoreIfMultiple = [
         "etiketten", "drucker", "gerät", "geräte",
         "artikel", "etikett", "drucksysteme",
-        "cpm", "druckt", "software"
+        "cpm", "druckt", "software", "informationen"
     ];
 
     if (keywords.length > 1) {
@@ -433,3 +433,4 @@ export default async function handler(req, res) {
   await logToGoogleForm(message, finalReply);
   return sendJSON(res, 200, { reply: finalReply });
 }
+
